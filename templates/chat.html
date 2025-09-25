@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Semantic Kernel Session Pool Demo</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: #4682BF;
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        .chat-container {
+            height: 500px;
+            overflow-y: auto;
+            padding: 20px;
+            background: #fafafa;
+        }
+        .message {
+            margin-bottom: 15px;
+            padding: 12px;
+            border-radius: 8px;
+            max-width: 80%;
+        }
+        .user-message {
+            background: #e5e7eb;
+            margin-left: auto;
+            text-align: right;
+        }
+        .ai-message {
+            background: #dbeafe;
+            margin-right: auto;
+        }
+        .session-pool-message {
+            background: #dcfce7;
+            margin-right: auto;
+            border-left: 4px solid #16a34a;
+        }
+        .message-source {
+            font-size: 0.8em;
+            color: #6b7280;
+            margin-top: 5px;
+            font-style: italic;
+        }
+        .session-info {
+            background: #f3f4f6;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            font-size: 0.9em;
+        }
+        .input-container {
+            padding: 20px;
+            border-top: 1px solid #e5e7eb;
+            display: flex;
+            gap: 10px;
+        }
+        .message-input {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 16px;
+        }
+        .send-button {
+            padding: 12px 24px;
+            background: #4682BF;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .send-button:hover {
+            background: #3a6fa5;
+        }
+        .send-button:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+        .loading {
+            color: #6b7280;
+            font-style: italic;
+        }
+        .code-block {
+            background: #1f2937;
+            color: #f9fafb;
+            padding: 12px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            margin: 8px 0;
+            overflow-x: auto;
+        }
+        .execution-result {
+            background: #065f46;
+            color: #ecfdf5;
+            padding: 8px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            margin: 8px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Semantic Kernel Session Pool Demo</h1>
+            <p>Ask math questions to see Python code execution in Azure Container Apps Session Pools!</p>
+        </div>
+        
+        <div class="chat-container" id="chatContainer">
+            <div class="session-info">
+                <strong>Session Pool Status:</strong> <span id="sessionStatus">Connecting...</span><br>
+                <strong>Current Session ID:</strong> <span id="currentSession">None</span>
+            </div>
+            
+            <div class="message ai-message">
+                <div>Welcome! I can help you with math questions using Python code execution. Try asking:</div>
+                <ul>
+                    <li>"What is 5 squared?"</li>
+                    <li>"Calculate the square root of 144"</li>
+                    <li>"What's 10 * 25 + 15?"</li>
+                </ul>
+                <div class="message-source">🤖 System Welcome Message</div>
+            </div>
+        </div>
+        
+        <div class="input-container">
+            <input 
+                type="text" 
+                class="message-input" 
+                id="messageInput" 
+                placeholder="Ask a math question or chat..."
+                onkeypress="handleKeyPress(event)"
+            >
+            <button class="send-button" onclick="sendMessage()" id="sendButton">Send</button>
+        </div>
+    </div>
+
+    <script>
+        let isLoading = false;
+
+        async function checkSessionStatus() {
+            try {
+                const response = await fetch('/debug');
+                const data = await response.json();
+                document.getElementById('sessionStatus').textContent = 
+                    data.has_credentials ? 'Connected ✅' : 'Not Connected ❌';
+            } catch (error) {
+                document.getElementById('sessionStatus').textContent = 'Error checking status ⚠️';
+            }
+        }
+
+        function addMessage(content, isUser = false, sourceInfo = null, sessionId = null) {
+            const chatContainer = document.getElementById('chatContainer');
+            const messageDiv = document.createElement('div');
+            
+            let messageClass = 'message ';
+            if (isUser) {
+                messageClass += 'user-message';
+            } else if (sourceInfo && sourceInfo.includes('Session Pool')) {
+                messageClass += 'session-pool-message';
+            } else {
+                messageClass += 'ai-message';
+            }
+            
+            messageDiv.className = messageClass;
+            
+            // Parse content for code blocks and execution results
+            let htmlContent = content;
+            
+            // Replace code blocks with styled versions
+            htmlContent = htmlContent.replace(/```python\n(.*?)\n```/gs, '<div class="code-block">$1</div>');
+            htmlContent = htmlContent.replace(/```(.*?)```/gs, '<div class="code-block">$1</div>');
+            
+            messageDiv.innerHTML = `
+                <div>${htmlContent}</div>
+                ${sourceInfo ? `<div class="message-source">${sourceInfo}</div>` : ''}
+            `;
+            
+            chatContainer.appendChild(messageDiv);
+            
+            // Update session ID if provided
+            if (sessionId) {
+                document.getElementById('currentSession').textContent = sessionId;
+            }
+            
+            // Scroll to bottom
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const sendButton = document.getElementById('sendButton');
+            const message = input.value.trim();
+            
+            if (!message || isLoading) return;
+            
+            // Add user message
+            addMessage(message, true);
+            input.value = '';
+            
+            // Show loading state
+            isLoading = true;
+            sendButton.disabled = true;
+            sendButton.textContent = 'Sending...';
+            
+            const loadingDiv = document.createElement('div');
+            loadingDiv.className = 'message ai-message loading';
+            loadingDiv.textContent = 'Thinking...';
+            document.getElementById('chatContainer').appendChild(loadingDiv);
+            
+            try {
+                const response = await fetch(`/chat?message=${encodeURIComponent(message)}`);
+                const data = await response.json();
+                
+                // Remove loading message
+                loadingDiv.remove();
+                
+                // Determine source information
+                let sourceInfo = '';
+                let sessionId = null;
+                
+                if (data.session_id) {
+                    sessionId = data.session_id;
+                    sourceInfo = `🐍 Executed in Azure Session Pool (Session: ${sessionId})`;
+                    
+                    // Show executed code and result
+                    let content = data.output;
+                    if (data.execution_output) {
+                        content += `<div class="execution-result">Output: ${data.execution_output}</div>`;
+                    }
+                    addMessage(content, false, sourceInfo, sessionId);
+                    
+                } else if (data.note && data.note.includes('Azure OpenAI')) {
+                    sourceInfo = '🤖 Response from Azure OpenAI via Semantic Kernel';
+                    addMessage(data.output, false, sourceInfo);
+                } else {
+                    sourceInfo = '🤖 AI Response';
+                    addMessage(data.output, false, sourceInfo);
+                }
+                
+            } catch (error) {
+                loadingDiv.remove();
+                addMessage('Sorry, there was an error processing your message.', false, '❌ Error');
+                console.error('Error:', error);
+            }
+            
+            // Reset loading state
+            isLoading = false;
+            sendButton.disabled = false;
+            sendButton.textContent = 'Send';
+        }
+
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            checkSessionStatus();
+            document.getElementById('messageInput').focus();
+        });
+    </script>
+</body>
+</html>

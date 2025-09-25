@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/refs/heads/main/schemas/v1.0/azure.yaml.json
+
+name: semantic-kernel-sessions
+
+infra:
+  provider: bicep
+
+services:
+  chat-api:
+    project: ./
+    host: containerapp
+    language: python
+    docker:
+      path: Dockerfile
+      context: ./
